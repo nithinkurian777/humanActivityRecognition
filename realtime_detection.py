@@ -9,24 +9,30 @@ from time import time
 import json
 import sys
 import cv2
+import os
 
 from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
 
-def readPort(q1, radar):
+def readPort(q1, q2, q3, radar):
     # regex expression to read 3 or  digit numbers till \n
-    regex_pattern = r"[0-9][0-9]{0,3}"
+    regex_pattern = r"\b\d+(?:,\d+)*\b"
     with serial.Serial(radar.port, radar.baudrate, timeout=1) as ser:
         while True:
             byte_array = ser.readline()
-
             z = re.findall(regex_pattern, str(byte_array))
             # convert from string to integer
             if len(z) > 0:
                 # print(z)
-                val = float((5 / 1023) * int(z[0]))
+                vals = z[0].split(',')
+                print(vals)
+                val1 = float((5 / 4095) * int(vals[0]))
+                val2 = float((5 / 4095) * int(vals[1]))
+                val3 = float((5 / 4095) * int(vals[2]))
                 # add to queue
-                q1.put(val)
+                q1.put(val1)
+                q2.put(val2)
+                q3.put(val3)
 
 
 def dft(buf):
@@ -76,18 +82,18 @@ def stft(buf, nfft, overlap, zp, w):
     return out.T
 
 
-def Plot(q1, radar):
+def Plot(q1, q2, q3, radar):
     fig = plt.figure()
     ctr = 0
     temp = 0
     start_time = time()
     buf = []
-    counter = 1
+    counter = 0
     while True:
         if ctr == temp:
             start_time = time()
             ctr = ctr + 1
-
+        counter += 1
         if not (q1.empty()):
             if q1.qsize() > (radar.STFT_nfft + 10):
                 for i in range(radar.STFT_nfft):
@@ -132,18 +138,17 @@ def Plot(q1, radar):
 
                     plt.ion()
                     plt.tight_layout()
-                    if counter % 2 == 0:
-                        plt.savefig('plots/temp.png')
-                        img = cv2.imread(os.path.join(folder_path, filename))
-                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                        _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-                        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                        largest_contour = max(contours, key=cv2.contourArea)
-                        mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
-                        x, y, w, h = cv2.boundingRect(largest_contour)
-                        cropped_img = img[y:y + h, x:x + w]
 
-                    counter += 1
+                    plt.savefig(os.path.join('plots_1', 'plot' + str(counter) + '.png'))
+                    img = cv2.imread(os.path.join('plots_1', 'plot' + str(counter) + '.png'))
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+                    x, y, w, h = cv2.boundingRect(largest_contour)
+                    cropped_img = img[y:y + h, x:x + w]
+
                     plt.close()
                     plt.pause(0.001)
                     if q1.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
@@ -153,6 +158,135 @@ def Plot(q1, radar):
                     temp = ctr
                     start_time = time()
                     print(q1.qsize())
+        if not (q2.empty()):
+            if q2.qsize() > (radar.STFT_nfft + 10):
+                for i in range(radar.STFT_nfft):
+                    while len(buf) > radar.N:
+                        buf.pop(0)
+                    buf.append(q2.get())
+                if (len(buf) > radar.N):
+                    # plotting time samples
+                    plt.subplot(211)
+                    plt.plot(radar.time_axis, np.array(buf[0:radar.N]))
+                    plt.grid(True)
+                    plt.xlabel('time (s)')
+                    plt.ylabel('Amplitude (v)')
+
+                    # 0 to 5 V
+                    plt.ylim([0, 5])
+                    plt.xlim([0, radar.N * (1 / radar.fs)])
+
+                    plt.subplot(212)
+                    yf = dft(buf[0:radar.N])
+                    plt.plot(radar.vel_axis, yf)
+                    maxp = np.max(yf)
+                    plt.plot(radar.vel_axis, (maxp - 20) * np.ones(radar.N))
+                    plt.grid(True)
+                    plt.xlabel("Velocity (m/s)")
+                    plt.ylabel("psd")
+
+                    # STFT algorithm
+                    # plt.subplot(313)
+                    plt.figure()
+                    yf = stft(buf[0:radar.N], radar.STFT_nfft, radar.STFT_no_overlap,
+                              radar.STFT_zero_padding, np.hamming(radar.STFT_nfft))
+
+                    yf = 10 * np.log10(yf)
+                    maxp = np.max(yf)
+                    c = plt.imshow(yf, vmin=maxp - 20, vmax=maxp, origin="lower", interpolation='nearest',
+                                   extent=[0, radar.T, 0, radar.max_doppler],
+                                   aspect=radar.ts / (3 * radar.doppler_resolution))
+                    plt.colorbar(c)
+                    # print(np.shape(yf))
+                    # plt.xlabel('time (s)')
+                    # plt.ylabel('Doppler Frequency (Hz)')
+
+                    plt.ion()
+                    plt.tight_layout()
+
+                    plt.savefig(os.path.join('plots_2', 'plot' + str(counter) + '.png'))
+                    img = cv2.imread(os.path.join('plots_2', 'plot' + str(counter) + '.png'))
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+                    x, y, w, h = cv2.boundingRect(largest_contour)
+                    cropped_img = img[y:y + h, x:x + w]
+                    plt.close()
+                    plt.pause(0.001)
+                    if q2.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
+                        buf = []
+                    plt.clf()
+                    print("Time for loop: " + str(time() - start_time) + " s")
+                    temp = ctr
+                    start_time = time()
+                    print(q2.qsize())
+
+        if not (q3.empty()):
+            if q3.qsize() > (radar.STFT_nfft + 10):
+                for i in range(radar.STFT_nfft):
+                    while len(buf) > radar.N:
+                        buf.pop(0)
+                    buf.append(q3.get())
+                if (len(buf) > radar.N):
+                    # plotting time samples
+                    plt.subplot(211)
+                    plt.plot(radar.time_axis, np.array(buf[0:radar.N]))
+                    plt.grid(True)
+                    plt.xlabel('time (s)')
+                    plt.ylabel('Amplitude (v)')
+
+                    # 0 to 5 V
+                    plt.ylim([0, 5])
+                    plt.xlim([0, radar.N * (1 / radar.fs)])
+
+                    plt.subplot(212)
+                    yf = dft(buf[0:radar.N])
+                    plt.plot(radar.vel_axis, yf)
+                    maxp = np.max(yf)
+                    plt.plot(radar.vel_axis, (maxp - 20) * np.ones(radar.N))
+                    plt.grid(True)
+                    plt.xlabel("Velocity (m/s)")
+                    plt.ylabel("psd")
+
+                    # STFT algorithm
+                    # plt.subplot(313)
+                    plt.figure()
+                    yf = stft(buf[0:radar.N], radar.STFT_nfft, radar.STFT_no_overlap,
+                              radar.STFT_zero_padding, np.hamming(radar.STFT_nfft))
+                    yf = 10 * np.log10(yf)
+                    maxp = np.max(yf)
+                    c = plt.imshow(yf, vmin=maxp - 20, vmax=maxp, origin="lower", interpolation='nearest',
+                                   extent=[0, radar.T, 0, radar.max_doppler],
+                                   aspect=radar.ts / (3 * radar.doppler_resolution))
+                    plt.colorbar(c)
+                    # print(np.shape(yf))
+                    # plt.xlabel('time (s)')
+                    # plt.ylabel('Doppler Frequency (Hz)')
+
+                    plt.ion()
+                    plt.tight_layout()
+
+                    plt.savefig(os.path.join('plots_3', 'plot' + str(counter) + '.png'))
+                    img = cv2.imread(os.path.join('plots_3', 'plot' + str(counter) + '.png'))
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+                    x, y, w, h = cv2.boundingRect(largest_contour)
+                    cropped_img = img[y:y + h, x:x + w]
+
+                    plt.close()
+                    plt.pause(0.001)
+                    if q3.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
+                        buf = []
+                    plt.clf()
+                    print("Time for loop: " + str(time() - start_time) + " s")
+                    temp = ctr
+                    start_time = time()
+                    print(q3.qsize())
 
 
 class radar_params():
@@ -252,9 +386,11 @@ if __name__ == '__main__':
     radar = radar_params()
     # queue used to transfer data from p1 to p2
     q1 = Queue()
+    q2 = Queue()
+    q3 = Queue()
     # p1 is the process that reads data from Serial port and adds it to queue
-    p1 = Process(name='p1', target=readPort, args=(q1, radar))
+    p1 = Process(name='p1', target=readPort, args=(q1, q2, q3, radar))
     # p2 is the process that gets data fom p1 and does signal processing and plotting
-    p2 = Process(name='p2', target=Plot, args=(q1, radar))
+    p2 = Process(name='p2', target=Plot, args=(q1, q2, q3, radar))
     p1.start()
     p2.start()
