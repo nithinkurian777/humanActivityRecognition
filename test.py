@@ -30,6 +30,7 @@ while True:
         # Compute the spectrogram
         spec, freqs, bins, im = plt.specgram(sensor_data, Fs=1000, NFFT=1024, cmap='gray')
 
+
         # Save the spectrogram image to the appropriate directory
         if i == 0:
             path = os.path.join(dir1, 'spec.png')

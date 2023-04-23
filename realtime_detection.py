@@ -7,10 +7,11 @@ from multiprocessing import Process, Queue
 import numpy as np
 from time import time
 import json
-import sys
 import cv2
-import os
-
+import numpy as np
+from keras.models import load_model
+import threading
+from collections import Counter
 from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 
 
@@ -121,8 +122,6 @@ def Plot(q1, q2, q3, radar):
                     plt.xlabel("Velocity (m/s)")
                     plt.ylabel("psd")
 
-                    # STFT algorithm
-                    # plt.subplot(313)
                     plt.figure()
                     yf = stft(buf[0:radar.N], radar.STFT_nfft, radar.STFT_no_overlap,
                               radar.STFT_zero_padding, np.hamming(radar.STFT_nfft))
@@ -132,25 +131,15 @@ def Plot(q1, q2, q3, radar):
                                    extent=[0, radar.T, 0, radar.max_doppler],
                                    aspect=radar.ts / (3 * radar.doppler_resolution))
                     plt.colorbar(c)
-                    # print(np.shape(yf))
-                    # plt.xlabel('time (s)')
-                    # plt.ylabel('Doppler Frequency (Hz)')
 
                     plt.ion()
                     plt.tight_layout()
 
-                    plt.savefig(os.path.join('plots_1', 'plot' + str(counter) + '.png'))
-                    img = cv2.imread(os.path.join('plots_1', 'plot' + str(counter) + '.png'))
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    largest_contour = max(contours, key=cv2.contourArea)
-                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
-                    x, y, w, h = cv2.boundingRect(largest_contour)
-                    cropped_img = img[y:y + h, x:x + w]
+                    plt.savefig('plot_1.png')
 
                     plt.close()
                     plt.pause(0.001)
+                    # crop_images('plot_1.png')
                     if q1.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
                         buf = []
                     plt.clf()
@@ -204,17 +193,11 @@ def Plot(q1, q2, q3, radar):
                     plt.ion()
                     plt.tight_layout()
 
-                    plt.savefig(os.path.join('plots_2', 'plot' + str(counter) + '.png'))
-                    img = cv2.imread(os.path.join('plots_2', 'plot' + str(counter) + '.png'))
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    largest_contour = max(contours, key=cv2.contourArea)
-                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
-                    x, y, w, h = cv2.boundingRect(largest_contour)
-                    cropped_img = img[y:y + h, x:x + w]
+                    plt.savefig('plot_2.png')
+
                     plt.close()
                     plt.pause(0.001)
+                    # crop_images('plot_2.png')
                     if q2.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
                         buf = []
                     plt.clf()
@@ -261,25 +244,14 @@ def Plot(q1, q2, q3, radar):
                                    extent=[0, radar.T, 0, radar.max_doppler],
                                    aspect=radar.ts / (3 * radar.doppler_resolution))
                     plt.colorbar(c)
-                    # print(np.shape(yf))
-                    # plt.xlabel('time (s)')
-                    # plt.ylabel('Doppler Frequency (Hz)')
-
                     plt.ion()
                     plt.tight_layout()
 
-                    plt.savefig(os.path.join('plots_3', 'plot' + str(counter) + '.png'))
-                    img = cv2.imread(os.path.join('plots_3', 'plot' + str(counter) + '.png'))
-                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
-                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    largest_contour = max(contours, key=cv2.contourArea)
-                    mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
-                    x, y, w, h = cv2.boundingRect(largest_contour)
-                    cropped_img = img[y:y + h, x:x + w]
+                    plt.savefig('plot_3.png')
 
                     plt.close()
                     plt.pause(0.001)
+                    # crop_images('plot_3.png')
                     if q3.qsize() > int(radar.N / radar.STFT_nfft) * radar.N:
                         buf = []
                     plt.clf()
@@ -383,7 +355,90 @@ class radar_params():
 
 if __name__ == '__main__':
     # initialise radar parameters from settings.txt
+    def crop_images(image_path1, image_path2, image_path3):
+        # Loop through all images
+        for image_path in [image_path1, image_path2, image_path3]:
+            # Load the image
+            img = cv2.imread(image_path)
+
+            # Convert the image to grayscale
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Threshold the image to create a mask of the non-white areas
+            _, mask = cv2.threshold(gray, 250, 255, cv2.THRESH_BINARY_INV)
+
+            # Find the contours of the non-white areas
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # Find the largest contour and draw it on the mask
+            largest_contour = max(contours, key=cv2.contourArea)
+            mask = cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+
+            # Find the bounding box of the largest non-white area
+            x, y, w, h = cv2.boundingRect(largest_contour)
+
+            # Crop the image based on the bounding box
+            cropped_img = img[y:y + h, x:x + w]
+            filename = ''
+            if image_path == 'plot_1.png':
+                filename = 'plot_crop_1.png'
+            elif image_path == 'plot_2.png':
+                filename = 'plot_crop_2.png'
+            elif image_path == 'plot_3.png':
+                filename = 'plot_crop_3.png'
+
+            # Save the cropped image with the same filename
+            cv2.imwrite(filename, cropped_img)
+
+
+    def get_axes(self):
+        self.time_axis = np.linspace(0, self.T - self.ts, self.N)
+        # only real spectrum from 0 to fs/2
+        self.freq_axis = np.linspace(0, self.fs / 2 - self.delta_f, self.N)
+        self.vel_axis = self.freq_axis * self.lamb / 2
+
+
+    def getImageArray(path):
+        img = cv2.imread(path)
+        img = cv2.resize(img, (128, 128))
+        img_array = np.array(img, dtype='float32') / 255.
+        img_array = np.expand_dims(img_array, axis=0)
+        return img_array
+
+
+    def max_occuring_value(lst):
+        return max(set(lst), key=lst.count)
+
+
+    def real_prediction():
+        while True:
+            crop_images('plot_1.png', 'plot_2.png', 'plot_3.png')
+            prediction1 = model1.predict(getImageArray('plot_crop_1.png'))
+            predicted_class1 = np.argmax(prediction1)
+
+            prediction2 = model2.predict(getImageArray('plot_crop_2.png'))
+            predicted_class2 = np.argmax(prediction2)
+
+            prediction3 = model3.predict(getImageArray('plot_crop_3.png'))
+            predicted_class3 = np.argmax(prediction3)
+
+            print('Predicted class1:', predicted_class1)
+            print('Predicted class2:', predicted_class2)
+            print('Predicted class3:', predicted_class3)
+            results = [predicted_class1, predicted_class2, predicted_class3]
+
+            print("The most predicted class:")
+            max_occuring_value(results)
+
+            max_value = max_occuring_value(results)
+            print(max_value)
+
+
     radar = radar_params()
+    # Load the saved model from the h5 file
+    model1 = load_model('model1.h5')
+    model2 = load_model('model2.h5')
+    model3 = load_model('model3.h5')
     # queue used to transfer data from p1 to p2
     q1 = Queue()
     q2 = Queue()
@@ -394,3 +449,5 @@ if __name__ == '__main__':
     p2 = Process(name='p2', target=Plot, args=(q1, q2, q3, radar))
     p1.start()
     p2.start()
+    t1 = threading.Thread(target=real_prediction)
+    t1.start()
