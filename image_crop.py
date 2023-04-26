@@ -7,7 +7,7 @@ folders = ["plots_1", "plots_2", "plots_3"]
 # Loop through all folders
 for folder_path in folders:
     # Create a subfolder to save the cropped images
-    subfolder_name = "no_action"
+    subfolder_name = "bend"
     subfolder_path = os.path.join(folder_path, subfolder_name)
     os.makedirs(subfolder_path, exist_ok=True)
 

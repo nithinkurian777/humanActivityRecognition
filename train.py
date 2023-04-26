@@ -3,11 +3,11 @@ import numpy as np
 import cv2
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.utils import to_categorical
-
+import matplotlib.pyplot as plt
 # Set the paths to the main folders containing the subfolders of images
 folder1_path = "plots_1"
 folder2_path = "plots_2"
@@ -16,14 +16,14 @@ folder3_path = "plots_3"
 # Set the image dimensions and number of classes
 img_height = 75
 img_width = 75
-num_classes = 3
+num_classes = 4
 
 # Combine the images with the same names from the subfolders
 combined_images = []
 labels = []
 
-for subfolder in os.listdir(folder1_path):
-    if os.path.isdir(os.path.join(folder1_path, subfolder)) and os.path.isdir(os.path.join(folder2_path, subfolder)) and os.path.isdir(os.path.join(folder3_path, subfolder)):
+for subfolder in os.listdir(folder3_path):
+    if os.path.isdir(os.path.join(folder2_path, subfolder)) and os.path.isdir(os.path.join(folder2_path, subfolder)) and os.path.isdir(os.path.join(folder3_path, subfolder)):
         for filename in os.listdir(os.path.join(folder1_path, subfolder)):
             if filename in os.listdir(os.path.join(folder2_path, subfolder)) and filename in os.listdir(os.path.join(folder3_path, subfolder)):
                 img1 = cv2.imread(os.path.join(folder1_path, subfolder, filename), cv2.IMREAD_GRAYSCALE)
@@ -66,6 +66,7 @@ model.add(Conv2D(128, (3, 3), activation='relu'))
 model.add(MaxPooling2D((2, 2)))
 model.add(Flatten())
 model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.15))
 model.add(Dense(num_classes, activation='softmax'))
 
 # Compile the model
@@ -76,6 +77,18 @@ history = model.fit(train_images, train_labels, epochs=100, batch_size=16, valid
 
 # Save the model
 model.save('model.h5')
+
+
+# plot the training and validation accuracy
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epoch')
+plt.legend(['Train', 'Validation'], loc='upper left')
+# save the plot to disk
+plt.savefig('accuracy_1.png')
+plt.show()
 
 predictions = model.predict(val_images)
 # Convert the predictions to class labels

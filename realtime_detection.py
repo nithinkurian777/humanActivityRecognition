@@ -1,4 +1,6 @@
 # Signal processing
+import os.path
+
 import serial
 import matplotlib.pyplot as plt
 from numpy.fft import fft, fftshift
@@ -26,7 +28,7 @@ def readPort(q1, q2, q3, radar):
             if len(z) > 0:
                 # print(z)
                 vals = z[0].split(',')
-                print(vals)
+                # print(vals)
                 val1 = float((5 / 4095) * int(vals[0]))
                 val2 = float((5 / 4095) * int(vals[1]))
                 val3 = float((5 / 4095) * int(vals[2]))
@@ -357,7 +359,8 @@ if __name__ == '__main__':
     # initialise radar parameters from settings.txt
     def crop_images(image_path1, image_path2, image_path3):
         # Loop through all images
-        for image_path in [image_path1, image_path2, image_path3]:
+        if os.path.exists(image_path1) and os.path.exists(image_path2) and os.path.exists(image_path3):
+         for image_path in [image_path1, image_path2, image_path3]:
             # Load the image
             img = cv2.imread(image_path)
 
@@ -434,6 +437,7 @@ if __name__ == '__main__':
             print(max_value)
 
 
+    classes = {0: 'no action',  1: 'walking', 2: 'running', 3: 'bending'}
     radar = radar_params()
     # Load the saved model from the h5 file
     model1 = load_model('model1.h5')
